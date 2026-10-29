@@ -128,9 +128,9 @@ elif menu == "🔍 2. 歷史紀錄查詢":
         search_keyword = st.text_input("🔎 搜尋料號 / 供應商 / 品名", "")
         if search_keyword:
             df_filtered = df_records[df_records.astype(str).apply(lambda x: x.str.contains(search_keyword, case=False)).any(axis=1)]
-            st.dataframe(df_filtered, use_container_state=True)
+            st.dataframe(df_filtered, use_container_width=True)
         else:
-            st.dataframe(df_records, use_container_state=True)
+            st.dataframe(df_records, use_container_width=True)
     else:
         st.info("目前尚無歷史檢驗紀錄。")
 
@@ -143,11 +143,11 @@ elif menu == "📊 3. 品質分析看板":
         
         with col_chart1:
             fig1 = px.histogram(df_records, x="供應商", color="Pass/Fail", barmode="group", title="各供應商進料批次 Pass/Fail 統計")
-            st.plotly_chart(fig1, use_container_state=True)
+            st.plotly_chart(fig1, use_container_width=True)
             
         with col_chart2:
             if "料件屬性" in df_records.columns:
                 fig2 = px.pie(df_records, names="料件屬性", title="檢驗料件屬性佔比")
-                st.plotly_chart(fig2, use_container_state=True)
+                st.plotly_chart(fig2, use_container_width=True)
     else:
         st.info("尚無足夠數據繪製品質分析圖表。")
