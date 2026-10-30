@@ -121,18 +121,45 @@ if menu == "📝 1. 新增進料檢驗":
         st.success(f"已成功錄入料號【{selected_part}】之檢驗紀錄！")
 
 elif menu == "🔍 2. 歷史紀錄查詢":
-    st.subheader("🔍 歷史進料檢驗資料庫")
-    df_records = load_sheet("檢驗紀錄")
+    st.subheader("🔍 歷史進料檢驗資料庫與種類明細")
     
-    if not df_records.empty:
-        search_keyword = st.text_input("🔎 搜尋料號 / 供應商 / 品名", "")
-        if search_keyword:
-            df_filtered = df_records[df_records.astype(str).apply(lambda x: x.str.contains(search_keyword, case=False)).any(axis=1)]
-            st.dataframe(df_filtered, use_container_width=True)
-        else:
-            st.dataframe(df_records, use_container_width=True)
-    else:
-        st.info("目前尚無歷史檢驗紀錄。")
+    # 跨表通用搜尋列
+    search_keyword = st.text_input("🔎 跨表搜尋 (輸入料號 / 供應商 / 品名 / 檢驗人員)", "")
+
+    # 使用頁籤 (Tabs) 提供各分類檢驗紀錄的快速切換
+    tabs = st.tabs([
+        "📋 檢驗紀錄 (總表)",
+        "🟢 PCB 檢驗",
+        "🔵 PCBA 檢驗",
+        "🟠 二手來料檢驗",
+        "🟣 料件維修檢驗",
+        "🟡 治具量測",
+        "⚪ 一般料件檢驗"
+    ])
+    
+    sheet_mapping = [
+        ("檢驗紀錄", tabs[0]),
+        ("PCB檢驗", tabs[1]),
+        ("PCBA檢驗", tabs[2]),
+        ("二手來料檢驗", tabs[3]),
+        ("料件維修檢驗", tabs[4]),
+        ("治具量測", tabs[5]),
+        ("一般料件檢驗", tabs[6]),
+    ]
+    
+    for sheet_name, tab in sheet_mapping:
+        with tab:
+            df = load_sheet(sheet_name)
+            if not df.empty:
+                if search_keyword:
+                    df_filtered = df[df.astype(str).apply(lambda x: x.str.contains(search_keyword, case=False)).any(axis=1)]
+                    st.write(f"📊 **{sheet_name}** （符合搜尋結果：{len(df_filtered)} 筆）")
+                    st.dataframe(df_filtered, use_container_width=True)
+                else:
+                    st.write(f"📊 **{sheet_name}** （全表共 {len(df)} 筆）")
+                    st.dataframe(df, use_container_width=True)
+            else:
+                st.info(f"【{sheet_name}】目前無紀錄或分頁為空。")
 
 elif menu == "📊 3. 品質分析看板":
     st.subheader("📊 供應商與品質分析儀表板")
