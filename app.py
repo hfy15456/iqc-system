@@ -44,11 +44,11 @@ with tab1:
     with st.form("form_item_master", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            part_no = st.text_input("料號 *", placeholder="例：2305212")
-            part_name = st.text_input("品名 *", placeholder="例：RFDS Control PCB")
-            spec = st.text_input("規格描述", placeholder="例：Rev B / PCB")
+            part_no = st.text_input("料號 *", placeholder="例：8705161-03-S")
+            part_name = st.text_input("品名 *", placeholder="例：APEX PA")
+            spec = st.text_input("規格描述", placeholder="例：Passive / PCB")
         with col2:
-            supplier = st.text_input("供應商", placeholder="例：全葳 / 辰樺")
+            supplier = st.text_input("供應商", placeholder="例：全葳 / Patrick")
             aql = st.selectbox("AQL 允收水準", ["0.65", "0.4", "1.0"], index=0)
             
         submitted_master = st.form_submit_button("儲存至 ItemMaster", use_container_width=True)
@@ -70,46 +70,54 @@ with tab1:
                         st.error("❌ " + res.get("message"))
 
 # ==========================================
-# 頁面 2：新增進料檢驗 (按 ItemMaster 細項分開輸入)
+# 頁面 2：新增進料檢驗 (即時搜尋料號 + 自動帶入完整資料)
 # ==========================================
 with tab2:
-    st.subheader("新增進料檢驗單 (資料細項獨立輸入)")
+    st.subheader("新增進料檢驗單")
     
-    # 讀取 ItemMaster 的料件詳細列表
+    # 讀取 ItemMaster 料件資料庫
     master_items = get_api_data("getItemMaster")
     master_map = {item["partNo"]: item for item in master_items} if master_items else {}
     
-    use_custom = st.checkbox("手動輸入全新料號 (非 ItemMaster 既有料號)")
+    st.markdown("##### 🔍 1. 搜尋料號 (自動帶入全數資料)")
+    search_options = [""] + sorted(list(master_map.keys()))
     
-    selected_part_no = ""
-    auto_part_name = ""
-    auto_spec = ""
-    auto_supplier = ""
+    # 支援輸入關鍵字即時過濾 (例如打 87051 就會過濾出 8705161-03-S)
+    selected_part_no = st.selectbox(
+        "請點擊輸入關鍵字搜尋料號 (例如：87051)：",
+        options=search_options,
+        index=0,
+        help="輸入關鍵字並選取目標料號後，下方將會自動填入品名、規格與供應商等全數資料"
+    )
     
-    if not use_custom and master_map:
-        selected_part_no = st.selectbox(
-            "從 ItemMaster 快速選擇料號 *", 
-            options=[""] + list(master_map.keys()),
-            format_func=lambda x: f"{x} - {master_map[x]['partName']}" if x in master_map else "-- 請選擇料號 --"
-        )
-        if selected_part_no in master_map:
-            item_info = master_map[selected_part_no]
-            auto_part_name = item_info.get("partName", "")
-            auto_spec = item_info.get("spec", "")
-            auto_supplier = item_info.get("supplier", "")
+    # 判斷選取的料號並準備自動帶入數值
+    if selected_part_no in master_map:
+        item_info = master_map[selected_part_no]
+        init_part_no = item_info.get("partNo", "")
+        init_part_name = item_info.get("partName", "")
+        init_spec = item_info.get("spec", "")
+        init_supplier = item_info.get("supplier", "")
+    else:
+        init_part_no = selected_part_no
+        init_part_name = ""
+        init_spec = ""
+        init_supplier = ""
 
+    st.markdown("---")
+    
+    # 檢驗填寫表單
     with st.form("form_add_inspection", clear_on_submit=True):
-        st.markdown("##### 📌 一、料件基本資訊 (對應 ItemMaster)")
+        st.markdown("##### 📌 2. 確認料件資訊 (已自動帶入，可自由微調)")
         col_a1, col_a2 = st.columns(2)
         with col_a1:
-            part_no_input = st.text_input("1. 料號 *", value=selected_part_no if not use_custom else "", placeholder="例：2305212")
-            part_name_input = st.text_input("2. 品名 *", value=auto_part_name if not use_custom else "", placeholder="例：RFDS Control PCB")
+            part_no_input = st.text_input("1. 料號 *", value=init_part_no, placeholder="例：8705161-03-S")
+            part_name_input = st.text_input("2. 品名 *", value=init_part_name, placeholder="例：APEX PA")
         with col_a2:
-            spec_input = st.text_input("3. 規格", value=auto_spec if not use_custom else "", placeholder="例：Rev B / PCB")
-            supplier_input = st.text_input("4. 供應商", value=auto_supplier if not use_custom else "", placeholder="例：全葳 / 辰樺")
+            spec_input = st.text_input("3. 規格", value=init_spec, placeholder="例：Rev B / PCB")
+            supplier_input = st.text_input("4. 供應商", value=init_supplier, placeholder="例：全葳 / Patrick")
             
         st.markdown("---")
-        st.markdown("##### 📌 二、進料檢驗數據紀錄")
+        st.markdown("##### 📌 3. 填寫進料檢驗數據紀錄")
         col_b1, col_b2 = st.columns(2)
         with col_b1:
             inspect_date = st.date_input("檢驗日期 *", value=date.today())
