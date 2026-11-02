@@ -13,7 +13,7 @@ APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxhm_5oR08CgCMveu_BVN
 
 st.set_page_config(page_title="IQC 品保進料檢驗系統", page_icon="🛡️", layout="wide")
 
-# 優先從 Google 試算表實時讀取資料 (快取時間設定 3 秒以確保數據即時性)
+# 實時讀取 Google 試算表資料 (快取 3 秒)
 @st.cache_data(ttl=3)
 def load_sheet(sheet_name):
     try:
@@ -23,23 +23,20 @@ def load_sheet(sheet_name):
         if res_json.get("status") == "success":
             raw_data = res_json.get("data", [])
             if len(raw_data) > 1:
-                headers = raw_data[0]
-                rows = raw_data[1:]
-                df = pd.DataFrame(rows, columns=headers)
-                return df
+                return pd.DataFrame(raw_data[1:], columns=raw_data[0])
             elif len(raw_data) == 1:
                 return pd.DataFrame(columns=raw_data[0])
     except Exception:
         pass
 
-    # 備援：若 API 連線失敗時，讀取本地 IQC.xlsx
+    # 備援：讀取本地檔
     if os.path.exists(EXCEL_FILE):
         try:
             xls = pd.ExcelFile(EXCEL_FILE)
             if sheet_name in xls.sheet_names:
                 return pd.read_excel(EXCEL_FILE, sheet_name=sheet_name)
-        except Exception as e:
-            st.error(f"讀取 {sheet_name} 分頁失敗: {e}")
+        except Exception:
+            pass
     return pd.DataFrame()
 
 # 主標題
@@ -53,10 +50,9 @@ menu = st.sidebar.radio("系統功能選單", [
     "📊 4. 品質分析看板"
 ])
 
-# 載入實時料件主檔
 df_items = load_sheet("料件主檔")
 
-# 1. 新增進料檢驗
+# ==================== 選單 1：新增進料檢驗 ====================
 if menu == "📝 1. 新增進料檢驗":
     st.subheader("📋 填寫檢驗單")
     col1, col2 = st.columns(2)
@@ -136,4 +132,106 @@ if menu == "📝 1. 新增進料檢驗":
             st.selectbox("是否能安裝", ["OK", "NG"])
             
     inspector = st.text_input("檢驗人員簽名", value="Eddie")
-    notes = st
+    notes = st.text_area("不良原因 / 備註敘述", value="")
+
+    if st.button("💾 儲存送出檢驗紀錄", type="primary"):
+        payload = {
+            "action": "add_inspection",
+            "date": str(date_input),
+            "part_name": part_name,
+            "part_no": selected_part,
+            "supplier": supplier,
+            "category": category,
+            "link_text": f"👉 前往{category}表",
+            "total_qty": total_qty,
+            "inspect_qty": inspect_qty,
+            "defect_qty": defect_qty,
+            "status": status,
+            "yield_rate": yield_rate,
+            "inspector": inspector,
+            "notes": notes
+        }
+        
+        try:
+            res = requests.get(APPS_SCRIPT_URL, params={"data": json.dumps(payload)}, timeout=15)
+            res_json = res.json()
+            if res.status_code == 200 and res_json.get("status") == "success":
+                st.success(f"已成功同步寫入 Google 試算表！料號：【{selected_part}】")
+                st.cache_data.clear()
+            else:
+                st.error(f"寫入失敗：{res_json.get('message', res.text)}")
+        except Exception as e:
+            st.error(f"連線異常：{e}")
+
+# ==================== 選單 2：新增料件主檔 ====================
+elif menu == "➕ 2. 新增料件主檔":
+    st.subheader("➕ 建立新料件主檔資料")
+    new_part_no = st.text_input("新料號 (Part Number)", "")
+    new_part_name = st.text_input("品名規格 (Description)", "")
+    new_supplier = st.selectbox("供應商", ["定晨", "Patrick", "晨樺", "全葳", "其他"])
+    new_category = st.selectbox("料件屬性", ["PCBA", "PCB", "二手來料", "料件維修", "治具", "一般料件"])
+    
+    if st.button("💾 新增至料件主檔", type="primary"):
+        if new_part_no and new_part_name:
+            payload = {
+                "action": "add_item",
+                "part_no": new_part_no,
+                "part_name": new_part_name,
+                "supplier": new_supplier,
+                "category": new_category
+            }
+            try:
+                res = requests.get(APPS_SCRIPT_URL, params={"data": json.dumps(payload)}, timeout=15)
+                res_json = res.json()
+                if res.status_code == 200 and res_json.get("status") == "success":
+                    st.success(f"料號【{new_part_no}】已成功新增至雲端主檔！")
+                    st.cache_data.clear()
+                else:
+                    st.error(f"新增失敗：{res_json.get('message', res.text)}")
+            except Exception as e:
+                st.error(f"連線異常：{e}")
+        else:
+            st.warning("請填寫完整的料號與品名！")
+
+# ==================== 選單 3：歷史紀錄查詢 ====================
+elif menu == "🔍 3. 歷史紀錄查詢":
+    st.subheader("🔍 歷史進料檢驗資料庫與種類明細")
+    search_keyword = st.text_input("🔎 跨表搜尋 (輸入料號 / 供應商 / 品名 / 檢驗人員)", "")
+
+    tabs = st.tabs([
+        "📋 檢驗紀錄 (總表)", "🟢 PCB 檢驗", "🔵 PCBA 檢驗", 
+        "🟠 二手來料檢驗", "🟣 料件維修檢驗", "🟡 治具量測", "⚪ 一般料件檢驗"
+    ])
+    
+    sheet_mapping = [
+        ("檢驗紀錄", tabs[0]), ("PCB檢驗", tabs[1]), ("PCBA檢驗", tabs[2]),
+        ("二手來料檢驗", tabs[3]), ("料件維修檢驗", tabs[4]), ("治具量測", tabs[5]), ("一般料件檢驗", tabs[6])
+    ]
+    
+    for sheet_name, tab in sheet_mapping:
+        with tab:
+            df = load_sheet(sheet_name)
+            if not df.empty:
+                if search_keyword:
+                    df_filtered = df[df.astype(str).apply(lambda x: x.str.contains(search_keyword, case=False)).any(axis=1)]
+                    st.dataframe(df_filtered, use_container_width=True)
+                else:
+                    st.dataframe(df, use_container_width=True)
+            else:
+                st.info(f"【{sheet_name}】目前無紀錄或分頁為空。")
+
+# ==================== 選單 4：品質分析看板 ====================
+elif menu == "📊 4. 品質分析看板":
+    st.subheader("📊 供應商與品質分析儀表板")
+    df_records = load_sheet("檢驗紀錄")
+    if not df_records.empty and "供應商" in df_records.columns:
+        col_chart1, col_chart2 = st.columns(2)
+        with col_chart1:
+            fig1 = px.histogram(df_records, x="供應商", color="Pass/Fail", barmode="group", title="各供應商進料批次 Pass/Fail 統計")
+            st.plotly_chart(fig1, use_container_width=True)
+        with col_chart2:
+            if "料件屬性" in df_records.columns:
+                fig2 = px.pie(df_records, names="料件屬性", title="檢驗料件屬性佔比")
+                st.plotly_chart(fig2, use_container_width=True)
+    else:
+        st.info("尚無足夠數據繪製品質分析圖表。")
