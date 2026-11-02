@@ -70,18 +70,17 @@ with tab1:
                         st.error("❌ " + res.get("message"))
 
 # ==========================================
-# 頁面 2：新增進料檢驗 (精準依「料號」搜尋 + 自動帶入完整資料)
+# 頁面 2：新增進料檢驗 (按料號搜尋帶入 + 對齊 InspectionLogs 格式)
 # ==========================================
 with tab2:
-    st.subheader("新增進料檢驗單")
+    st.subheader("新增進料檢驗單 (寫入 InspectionLogs)")
     
-    # 向 ItemMaster 與 InspectionLogs 收集不重複料號與細項資訊
+    # 載入 ItemMaster 與 InspectionLogs 歷史資料庫中的所有料號
     master_items = get_api_data("getItemMaster")
     history_items = get_api_data("getHistory")
     
     parts_db = {}
     
-    # 1. 載入 ItemMaster 主檔資訊
     for item in master_items:
         p_no = item.get("partNo", "").strip()
         if p_no:
@@ -92,7 +91,6 @@ with tab2:
                 "supplier": item.get("supplier", "")
             }
             
-    # 2. 補充 InspectionLogs 中既有紀錄的料號資訊 (C欄為料號)
     for item in history_items:
         p_no = item.get("partNo", "").strip()
         if p_no and p_no not in parts_db:
@@ -103,10 +101,9 @@ with tab2:
                 "supplier": item.get("supplier", "")
             }
 
-    st.markdown("##### 🔍 1. 搜尋料號 (打 87051 會精準呈現 8705161-03-S)")
+    st.markdown("##### 🔍 1. 搜尋料號 (例如輸入 87051 精準選取)")
     search_list = [""] + sorted(list(parts_db.keys()))
     
-    # 輸入關鍵字過濾料號
     selected_part_no = st.selectbox(
         "點擊輸入關鍵字搜尋料號：",
         options=search_list,
@@ -114,7 +111,6 @@ with tab2:
         format_func=lambda x: f"{x} ({parts_db[x]['partName']})" if x in parts_db else "-- 請輸入或選擇料號 --"
     )
     
-    # 選定「料號」後自動擷取完整資訊帶入
     if selected_part_no in parts_db:
         info = parts_db[selected_part_no]
         init_part_no = info.get("partNo", "")
@@ -130,35 +126,35 @@ with tab2:
     st.markdown("---")
     
     with st.form("form_add_inspection", clear_on_submit=True):
-        st.markdown("##### 📌 2. 料件細項資訊 (根據選取料號自動帶入)")
+        st.markdown("##### 📌 2. 料件細項資訊 (根據選取料號自動填入)")
         col_a1, col_a2 = st.columns(2)
         with col_a1:
-            part_no_input = st.text_input("1. 料號 *", value=init_part_no, placeholder="例：8705161-03-S")
-            part_name_input = st.text_input("2. 品名 *", value=init_part_name, placeholder="例：APEX PA")
+            part_no_input = st.text_input("1. 料號 (C欄) *", value=init_part_no, placeholder="例：8705161-03-S")
+            part_name_input = st.text_input("2. 品名 (B欄) *", value=init_part_name, placeholder="例：APEX PA")
         with col_a2:
-            spec_input = st.text_input("3. 規格", value=init_spec, placeholder="例：Rev B / PCB")
-            supplier_input = st.text_input("4. 供應商", value=init_supplier, placeholder="例：Patrick / 全葳")
+            spec_input = st.text_input("3. 規格描述 (帶入B欄)", value=init_spec, placeholder="例：Rev B / PCB")
+            supplier_input = st.text_input("4. 供應商 (D欄)", value=init_supplier, placeholder="例：Patrick / 全葳")
             
         st.markdown("---")
-        st.markdown("##### 📌 3. 填寫進料檢驗紀錄數據")
+        st.markdown("##### 📌 3. 填寫進料檢驗數據紀錄")
         col_b1, col_b2 = st.columns(2)
         with col_b1:
-            inspect_date = st.date_input("檢驗日期 *", value=date.today())
-            item_attr = st.selectbox("料件屬性", ["二手來料", "PCB", "料件維修", "一般料件"], index=0)
-            total_qty = st.number_input("進貨數量 (數量) *", min_value=1, value=10, step=1)
-            sample_qty = st.number_input("檢驗數量 *", min_value=1, value=10, step=1)
+            inspect_date = st.date_input("檢驗日期 (A欄) *", value=date.today())
+            item_attr = st.selectbox("料件屬性 (E欄)", ["二手來料", "PCB", "料件維修", "一般料件"], index=0)
+            total_qty = st.number_input("數量 / 進貨數 (G欄) *", min_value=1, value=10, step=1)
+            sample_qty = st.number_input("檢驗數量 (H欄) *", min_value=1, value=10, step=1)
             
         with col_b2:
-            defect_qty = st.number_input("異常數量 *", min_value=0, value=0, step=1)
-            result = st.selectbox("Pass/Fail 判定 *", ["Pass", "Fail"], index=0)
-            detail_link = st.selectbox("填寫詳細紀錄 (選單/頁面)", ["👉 前往二手表", "👉 前往PCB表", "👉 前往維修表", "👉 前往一般表"], index=0)
+            defect_qty = st.number_input("異常數量 (I欄) *", min_value=0, value=0, step=1)
+            result = st.selectbox("Pass/Fail 判定 (J欄) *", ["Pass", "Fail"], index=0)
+            detail_link = st.selectbox("填寫詳細紀錄 (F欄)", ["👉 前往二手表", "👉 前往PCB表", "👉 前往維修表", "👉 前往一般表"], index=0)
 
-        defect_reason = st.text_area("不良原因描述", placeholder="若有異常請描述不良現象...")
+        defect_reason = st.text_area("不良原因描述 (L欄)", placeholder="若有異常請描述不良現象...")
 
         submitted_insp = st.form_submit_button("寫入 InspectionLogs 試算表", use_container_width=True)
         if submitted_insp:
             if not part_no_input or not part_name_input:
-                st.warning("請完整填寫料號與品名！")
+                st.warning("請填寫料號與品名！")
             else:
                 with st.spinner("資料寫入中..."):
                     res = post_api_data("addInspection", {
@@ -181,7 +177,7 @@ with tab2:
                         st.error("❌ " + res.get("message"))
 
 # ==========================================
-# 頁面 3：歷史紀錄查詢 (對齊 InspectionLogs 12 個實體欄位)
+# 頁面 3：歷史紀錄查詢 (完全對齊 InspectionLogs 實體欄位)
 # ==========================================
 with tab3:
     st.subheader("歷史檢驗紀錄查詢 (InspectionLogs)")
