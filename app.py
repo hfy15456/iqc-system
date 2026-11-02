@@ -46,9 +46,9 @@ with tab1:
         with col1:
             part_no = st.text_input("料號 *", placeholder="例：8705161-03-S")
             part_name = st.text_input("品名 *", placeholder="例：APEX PA")
-            spec = st.text_input("規格描述", placeholder="例：Passive / PCB")
+            spec = st.text_input("規格描述", placeholder="例：PCB / Component")
         with col2:
-            supplier = st.text_input("供應商", placeholder="例：全葳 / Patrick")
+            supplier = st.text_input("供應商", placeholder="例：Patrick / 全葳")
             aql = st.selectbox("AQL 允收水準", ["0.65", "0.4", "1.0"], index=0)
             
         submitted_master = st.form_submit_button("儲存至 ItemMaster", use_container_width=True)
@@ -70,33 +70,58 @@ with tab1:
                         st.error("❌ " + res.get("message"))
 
 # ==========================================
-# 頁面 2：新增進料檢驗 (即時搜尋料號 + 自動帶入完整資料)
+# 頁面 2：新增進料檢驗 (按「料號」精準搜尋 + 自動帶入完整細項)
 # ==========================================
 with tab2:
     st.subheader("新增進料檢驗單")
     
-    # 讀取 ItemMaster 料件資料庫
+    # 同時向 ItemMaster 與 InspectionLogs 收集所有不重複料號
     master_items = get_api_data("getItemMaster")
-    master_map = {item["partNo"]: item for item in master_items} if master_items else {}
+    history_items = get_api_data("getHistory")
     
-    st.markdown("##### 🔍 1. 搜尋料號 (自動帶入全數資料)")
-    search_options = [""] + sorted(list(master_map.keys()))
+    parts_db = {}
     
-    # 支援輸入關鍵字即時過濾 (例如打 87051 就會過濾出 8705161-03-S)
+    # 1. 載入 ItemMaster 資料
+    for item in master_items:
+        p_no = item.get("partNo", "").strip()
+        if p_no:
+            parts_db[p_no] = {
+                "partNo": p_no,
+                "partName": item.get("partName", ""),
+                "spec": item.get("spec", ""),
+                "supplier": item.get("supplier", "")
+            }
+            
+    # 2. 補入 InspectionLogs (C欄為料號) 中的歷史紀錄
+    for item in history_items:
+        p_no = item.get("partNo", "").strip()
+        if p_no and p_no not in parts_db:
+            parts_db[p_no] = {
+                "partNo": p_no,
+                "partName": item.get("partNameSpec", ""),
+                "spec": "",
+                "supplier": item.get("supplier", "")
+            }
+
+    st.markdown("##### 🔍 1. 搜尋料號 (例如輸入 87051 會精準出現 8705161-03-S)")
+    
+    search_list = [""] + sorted(list(parts_db.keys()))
+    
+    # selectbox 原生支援輸入關鍵字過濾 Key (料號)
     selected_part_no = st.selectbox(
-        "請點擊輸入關鍵字搜尋料號 (例如：87051)：",
-        options=search_options,
+        "點擊輸入關鍵字搜尋料號：",
+        options=search_list,
         index=0,
-        help="輸入關鍵字並選取目標料號後，下方將會自動填入品名、規格與供應商等全數資料"
+        format_func=lambda x: f"{x} ({parts_db[x]['partName']})" if x in parts_db else "-- 請輸入或選擇料號 --"
     )
     
-    # 判斷選取的料號並準備自動帶入數值
-    if selected_part_no in master_map:
-        item_info = master_map[selected_part_no]
-        init_part_no = item_info.get("partNo", "")
-        init_part_name = item_info.get("partName", "")
-        init_spec = item_info.get("spec", "")
-        init_supplier = item_info.get("supplier", "")
+    # 根據選取的「料號」自動擷取完整資訊
+    if selected_part_no in parts_db:
+        info = parts_db[selected_part_no]
+        init_part_no = info.get("partNo", "")
+        init_part_name = info.get("partName", "")
+        init_spec = info.get("spec", "")
+        init_supplier = info.get("supplier", "")
     else:
         init_part_no = selected_part_no
         init_part_name = ""
@@ -105,32 +130,31 @@ with tab2:
 
     st.markdown("---")
     
-    # 檢驗填寫表單
     with st.form("form_add_inspection", clear_on_submit=True):
-        st.markdown("##### 📌 2. 確認料件資訊 (已自動帶入，可自由微調)")
+        st.markdown("##### 📌 2. 料件細項資訊 (根據選取料號自動帶入)")
         col_a1, col_a2 = st.columns(2)
         with col_a1:
             part_no_input = st.text_input("1. 料號 *", value=init_part_no, placeholder="例：8705161-03-S")
             part_name_input = st.text_input("2. 品名 *", value=init_part_name, placeholder="例：APEX PA")
         with col_a2:
             spec_input = st.text_input("3. 規格", value=init_spec, placeholder="例：Rev B / PCB")
-            supplier_input = st.text_input("4. 供應商", value=init_supplier, placeholder="例：全葳 / Patrick")
+            supplier_input = st.text_input("4. 供應商", value=init_supplier, placeholder="例：Patrick / 全葳")
             
         st.markdown("---")
-        st.markdown("##### 📌 3. 填寫進料檢驗數據紀錄")
+        st.markdown("##### 📌 3. 填寫進料檢驗紀錄數據")
         col_b1, col_b2 = st.columns(2)
         with col_b1:
             inspect_date = st.date_input("檢驗日期 *", value=date.today())
-            item_attr = st.selectbox("料件屬性", ["PCB", "料件維修", "二手來料", "一般料件"], index=0)
+            item_attr = st.selectbox("料件屬性", ["二手來料", "PCB", "料件維修", "一般料件"], index=0)
             total_qty = st.number_input("進貨數量 (數量) *", min_value=1, value=10, step=1)
             sample_qty = st.number_input("檢驗數量 *", min_value=1, value=10, step=1)
             
         with col_b2:
             defect_qty = st.number_input("異常數量 *", min_value=0, value=0, step=1)
             result = st.selectbox("Pass/Fail 判定 *", ["Pass", "Fail"], index=0)
-            detail_link = st.selectbox("填寫詳細紀錄 (選單/連結)", ["👉 前往PCB表", "👉 前往維修表", "👉 前往二手表", "👉 前往一般表"], index=0)
+            detail_link = st.selectbox("填寫詳細紀錄 (選單/頁面)", ["👉 前往二手表", "👉 前往PCB表", "👉 前往維修表", "👉 前往一般表"], index=0)
 
-        defect_reason = st.text_area("不良原因描述", placeholder="若有異常請詳細描述不良現象...")
+        defect_reason = st.text_area("不良原因描述", placeholder="若有異常請描述不良現象...")
 
         submitted_insp = st.form_submit_button("寫入 InspectionLogs 試算表", use_container_width=True)
         if submitted_insp:
@@ -158,16 +182,17 @@ with tab2:
                         st.error("❌ " + res.get("message"))
 
 # ==========================================
-# 頁面 3：歷史紀錄查詢 (完全對齊 InspectionLogs 欄位)
+# 頁面 3：歷史紀錄查詢 (完全對齊 InspectionLogs 實體欄位)
 # ==========================================
 with tab3:
     st.subheader("歷史檢驗紀錄查詢 (InspectionLogs)")
-    search_kw = st.text_input("關鍵字搜尋 (品名規格 / 料號 / 供應商 / 不良描述)", "")
+    search_kw = st.text_input("關鍵字搜尋 (料號 / 品名規格 / 供應商 / 不良描述)", "")
     
     history_data = get_api_data("getHistory")
     if history_data:
         df = pd.DataFrame(history_data)
         
+        # 對齊InspectionLogs的12個欄位
         col_map = {
             "inspectDate": "檢驗日期",
             "partNameSpec": "品名規格",
