@@ -8,7 +8,7 @@ import plotly.express as px
 
 EXCEL_FILE = "IQC.xlsx"
 
-# 你的 Apps Script Web App 專屬網址
+# Apps Script Web App URL
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz-cLEOSo5ph4_SA9CN-o34ejiIemoLFEExyMb6xaeE61ukNgcekEhnyjrlKkZTaOfZ/exec"
 
 st.set_page_config(page_title="IQC 品保進料檢驗系統", page_icon="🛡️", layout="wide")
@@ -78,47 +78,6 @@ if menu == "📝 1. 新增進料檢驗":
     st.markdown("---")
     st.subheader(f"⚙️ 特殊類別項目檢驗：【{category}】")
     
-    # 依據屬性顯示檢驗項目
-    if category == "二手來料":
-        st.info("💡 提醒：請核對 SOP 標準進行電測（如 Diode 0.65-0.7V / 電阻 9.9-10.1Ω）")
-        e_col1, e_col2 = st.columns(2)
-        with e_col1:
-            st.selectbox("外觀/結構檢驗", ["OK", "NG"])
-            st.selectbox("電測/功能檢驗", ["OK", "NG", "N/A"])
-        with e_col2:
-            st.text_input("關鍵量測數據紀錄 (例如: D1=0.67V)", value="")
-            st.text_input("檢驗手冊/SOP 連結", value=f"D:\\IQC_SOP\\{selected_part}.pdf")
-            
-    elif category == "PCB":
-        p_col1, p_col2 = st.columns(2)
-        with p_col1:
-            st.selectbox("外觀與線路檢驗", ["OK", "NG"])
-        with p_col2:
-            st.selectbox("板材與翹曲度", ["OK", "NG"])
-            
-    elif category == "PCBA":
-        pcba_col1, pcba_col2 = st.columns(2)
-        with pcba_col1:
-            st.selectbox("刮傷/汙點/斷線", ["OK", "NG"])
-            st.selectbox("偏位/彎曲/翹曲", ["OK", "NG"])
-        with pcba_col2:
-            st.selectbox("焊點/元件位置", ["OK", "NG"])
-            st.selectbox("送電測試", ["OK", "NG", "N/A"])
-
-    elif category == "料件維修":
-        m_col1, m_col2 = st.columns(2)
-        with m_col1:
-            st.selectbox("保壓測試", ["OK", "NG", "N/A"])
-        with m_col2:
-            st.selectbox("水迴路測試", ["OK", "NG", "N/A"])
-
-    elif category == "治具":
-        j_col1, j_col2 = st.columns(2)
-        with j_col1:
-            st.selectbox("是否符合製圖", ["OK", "NG"])
-        with j_col2:
-            st.selectbox("是否能安裝", ["OK", "NG"])
-            
     inspector = st.text_input("檢驗人員簽名", value="Eddie")
     notes = st.text_area("不良原因 / 備註敘述", value="")
 
@@ -141,20 +100,17 @@ if menu == "📝 1. 新增進料檢驗":
         }
         
         try:
-            headers = {"Content-Type": "application/json"}
-            res = requests.post(APPS_SCRIPT_URL, data=json.dumps(payload), headers=headers, timeout=15)
+            # 改用 GET 請求，徹底排除 302 POST 重導向遺失數據的問題
+            res = requests.get(APPS_SCRIPT_URL, params={"data": json.dumps(payload)}, timeout=15)
+            res_json = res.json()
             
-            try:
-                res_json = res.json()
-                if res.status_code == 200 and res_json.get("status") == "success":
-                    st.success(f"已成功同步寫入 Google 試算表！料號：【{selected_part}】")
-                    st.cache_data.clear()
-                else:
-                    st.error(f"寫入失敗：{res_json.get('message', res.text)}")
-            except json.JSONDecodeError:
-                st.error("連線異常：Google 返回了非 JSON 格式頁面。請確認 Apps Script 部署設定中的「誰有存取權」是否已改為「所有人 (Anyone)」，且有發布「新版本」。")
+            if res.status_code == 200 and res_json.get("status") == "success":
+                st.success(f"已成功同步寫入 Google 試算表！料號：【{selected_part}】")
+                st.cache_data.clear()
+            else:
+                st.error(f"寫入失敗：{res_json.get('message', res.text)}")
         except Exception as e:
-            st.error(f"網路連線異常：{e}")
+            st.error(f"連線異常：{e}")
 
 # 2. 新增料件主檔
 elif menu == "➕ 2. 新增料件主檔":
@@ -174,20 +130,17 @@ elif menu == "➕ 2. 新增料件主檔":
                 "category": new_category
             }
             try:
-                headers = {"Content-Type": "application/json"}
-                res = requests.post(APPS_SCRIPT_URL, data=json.dumps(payload), headers=headers, timeout=15)
+                # 改用 GET 請求
+                res = requests.get(APPS_SCRIPT_URL, params={"data": json.dumps(payload)}, timeout=15)
+                res_json = res.json()
                 
-                try:
-                    res_json = res.json()
-                    if res.status_code == 200 and res_json.get("status") == "success":
-                        st.success(f"料號【{new_part_no}】已成功新增至雲端主檔！")
-                        st.cache_data.clear()
-                    else:
-                        st.error(f"新增失敗：{res_json.get('message', res.text)}")
-                except json.JSONDecodeError:
-                    st.error("連線異常：Google 返回了非 JSON 格式頁面。請確認 Apps Script 部署設定中的「誰有存取權」是否已改為「所有人 (Anyone)」，且有發布「新版本」。")
+                if res.status_code == 200 and res_json.get("status") == "success":
+                    st.success(f"料號【{new_part_no}】已成功新增至雲端主檔！")
+                    st.cache_data.clear()
+                else:
+                    st.error(f"新增失敗：{res_json.get('message', res.text)}")
             except Exception as e:
-                st.error(f"網路連線異常：{e}")
+                st.error(f"連線異常：{e}")
         else:
             st.warning("請填寫完整的料號與品名！")
 
