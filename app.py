@@ -1,395 +1,199 @@
 import streamlit as st
-import streamlit.components.v1 as components
+import requests
+import pandas as pd
+from datetime import date
 
-# 設定頁面寬度
+# Google Apps Script API 網址
+GAS_API_URL = "https://script.google.com/macros/s/AKfycbzeQ7G0xJ-c9D0ExQ_dmo4OqugJ9XauRKy8M6s2-Dti_ZCvzq9XhXzG2sweI3gJdybAmw/exec"
+
+# 頁面基本設定
 st.set_page_config(page_title="IQC 進料品質管理系統", layout="wide")
 
-# 將 HTML 網頁程式碼用三引號包起來
-html_code = """
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IQC 進料品質管理系統</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <style>
-    body { background-color: #f4f6f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    .card { border: none; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-    .nav-pills .nav-link { font-weight: 500; color: #495057; }
-    .nav-pills .nav-link.active { background-color: #0d6efd; font-weight: 600; }
-    .stat-card { border-left: 5px solid #0d6efd; }
-    .stat-card.pass { border-left-color: #198754; }
-    .stat-card.fail { border-left-color: #dc3545; }
-    .loading-spinner { display: inline-block; width: 1.2rem; height: 1.2rem; border: 0.2em solid currentColor; border-right-color: transparent; border-radius: 50%; animation: spinner-border .75s linear infinite; }
-  </style>
-</head>
-<body>
+st.title("IQC 進料品質管理系統")
+st.caption("Google Sheets 後端連動 × Python Streamlit 管理介面")
 
-<div class="container py-4">
-  <div class="text-center mb-4">
-    <h2 class="fw-bold text-primary">IQC 進料品質管理系統</h2>
-    <p class="text-muted small">Google Sheets 後端連動 × 即時監控</p>
-  </div>
+# 通用 API 請求函式
+def get_api_data(action):
+    try:
+        res = requests.get(f"{GAS_API_URL}?action={action}", timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get("status") == "success":
+                return data.get("data", [])
+            else:
+                st.error(f"後端回應錯誤: {data.get('message')}")
+        else:
+            st.error(f"HTTP 請求失敗 (狀態碼: {res.status_code})")
+    except Exception as e:
+        st.error(f"API 連線失敗: {e}")
+    return []
 
-  <ul class="nav nav-pills justify-content-center mb-4" id="mainTab" role="tablist">
-    <li class="nav-item"><button class="nav-link active" onclick="switchTab('tab-item-master', this)">1. 新增料件主檔</button></li>
-    <li class="nav-item"><button class="nav-link" onclick="switchTab('tab-add-inspection', this)">2. 新增進料檢驗</button></li>
-    <li class="nav-item"><button class="nav-link" onclick="switchTab('tab-history', this)">3. 歷史紀錄查詢</button></li>
-    <li class="nav-item"><button class="nav-link" onclick="switchTab('tab-dashboard', this)">4. 品質分析看板</button></li>
-  </ul>
+def post_api_data(action, payload_data):
+    try:
+        res = requests.post(GAS_API_URL, json={"action": action, "data": payload_data}, timeout=10)
+        if res.status_code == 200:
+            return res.json()
+        else:
+            return {"status": "error", "message": f"HTTP 狀態碼: {res.status_code}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
-  <div id="tab-item-master" class="tab-content">
-    <div class="card p-4 mx-auto" style="max-width: 600px;">
-      <h4 class="card-title mb-3 fw-bold">新增料件主檔</h4>
-      <form id="form-item-master">
-        <div class="mb-3">
-          <label class="form-label">料號 *</label>
-          <input type="text" id="master-partNo" class="form-control" placeholder="例如：PCBA-2026-001" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">品名 *</label>
-          <input type="text" id="master-partName" class="form-control" placeholder="例如：控制主板" required>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">規格描述</label>
-          <input type="text" id="master-spec" class="form-control" placeholder="例如：Rev B / RoHS">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">供應商</label>
-          <input type="text" id="master-supplier" class="form-control" placeholder="例如：台積電 / 鴻海">
-        </div>
-        <div class="mb-3">
-          <label class="form-label">AQL 允收水準</label>
-          <select id="master-aql" class="form-select">
-            <option value="0.4">0.4 (嚴格)</option>
-            <option value="0.65" selected>0.65 (標準)</option>
-            <option value="1.0">1.0 (放寬)</option>
-          </select>
-        </div>
-        <button type="button" id="btn-master-submit" class="btn btn-primary w-100 py-2" onclick="submitItemMaster()">儲存料件主檔</button>
-      </form>
-    </div>
-  </div>
+# 建立分頁
+tab1, tab2, tab3, tab4 = st.tabs(["1. 新增料件主檔", "2. 新增進料檢驗", "3. 歷史紀錄查詢", "4. 品質分析看板"])
 
-  <div id="tab-add-inspection" class="tab-content d-none">
-    <div class="card p-4 mx-auto" style="max-width: 650px;">
-      <h4 class="card-title mb-3 fw-bold">新增進料檢驗單</h4>
-      <form id="form-add-inspection">
-        <div class="row">
-          <div class="col-md-6 mb-3">
-            <label class="form-label">選擇料號 *</label>
-            <select id="insp-partNo" class="form-select" onchange="autoFillPartName()" required>
-              <option value="">載入中...</option>
-            </select>
-          </div>
-          <div class="col-md-6 mb-3">
-            <label class="form-label">品名</label>
-            <input type="text" id="insp-partName" class="form-control bg-light" readonly>
-          </div>
-        </div>
-        <div class="row">
-          <div class="col-md-6 mb-3">
-            <label class="form-label">檢驗日期 *</label>
-            <input type="date" id="insp-date" class="form-control" required>
-          </div>
-          <div class="col-md-6 mb-3">
-            <label class="form-label">檢驗人員 *</label>
-            <input type="text" id="insp-inspector" class="form-control" placeholder="請輸入姓名/工號" required>
-          </div>
-        </div>
-        <div class="row">
-          <div class="col-md-4 mb-3">
-            <label class="form-label">進貨數量 *</label>
-            <input type="number" id="insp-batchSize" class="form-control" min="1" required>
-          </div>
-          <div class="col-md-4 mb-3">
-            <label class="form-label">抽驗數量 *</label>
-            <input type="number" id="insp-sampleSize" class="form-control" min="1" required>
-          </div>
-          <div class="col-md-4 mb-3">
-            <label class="form-label">不良數量 *</label>
-            <input type="number" id="insp-defectCount" class="form-control" min="0" value="0" oninput="autoDetermineStatus()" required>
-          </div>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">判定結果 *</label>
-          <select id="insp-status" class="form-select">
-            <option value="合格">合格 (PASS)</option>
-            <option value="不合格">不合格 (FAIL)</option>
-          </select>
-        </div>
-        <div class="mb-3">
-          <label class="form-label">備註 / 異常描述</label>
-          <textarea id="insp-remark" class="form-control" rows="2" placeholder="備註或不良現象描述..."></textarea>
-        </div>
-        <button type="button" id="btn-insp-submit" class="btn btn-success w-100 py-2" onclick="submitInspection()">儲存檢驗紀錄</button>
-      </form>
-    </div>
-  </div>
+# ==========================================
+# 頁面 1：新增料件主檔
+# ==========================================
+with tab1:
+    st.subheader("新增料件主檔")
+    with st.form("form_item_master", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            part_no = st.text_input("料號 *", placeholder="例：PCBA-2026-001")
+            part_name = st.text_input("品名 *", placeholder="例：控制主板")
+            spec = st.text_input("規格描述", placeholder="例：Rev B / RoHS")
+        with col2:
+            supplier = st.text_input("供應商", placeholder="例：台積電 / 鴻海")
+            aql = st.selectbox("AQL 允收水準", ["0.65", "0.4", "1.0"], index=0)
+        
+        submitted = st.form_submit_button("儲存料件主檔", use_container_width=True)
+        if submitted:
+            if not part_no or not part_name:
+                st.warning("請完整填寫料號與品名！")
+            else:
+                with st.spinner("存檔中..."):
+                    res = post_api_data("addItemMaster", {
+                        "partNo": part_no.strip(),
+                        "partName": part_name.strip(),
+                        "spec": spec.strip(),
+                        "supplier": supplier.strip(),
+                        "aql": aql
+                    })
+                    if res.get("status") == "success":
+                        st.success(res.get("message"))
+                    else:
+                        st.error(f"新增失敗: {res.get('message')}")
 
-  <div id="tab-history" class="tab-content d-none">
-    <div class="card p-4">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h4 class="card-title m-0 fw-bold">歷史檢驗紀錄查詢</h4>
-        <input type="text" id="search-keyword" class="form-control w-auto" placeholder="關鍵字搜尋料號/品名..." oninput="renderHistoryTable()">
-      </div>
-      <div class="table-responsive">
-        <table class="table table-hover align-middle">
-          <thead class="table-light">
-            <tr>
-              <th>單號</th><th>日期</th><th>料號</th><th>品名</th><th>進貨數</th><th>抽驗數</th><th>不良數</th><th>判定</th><th>檢驗員</th>
-            </tr>
-          </thead>
-          <tbody id="history-table-body">
-            <tr><td colspan="9" class="text-center py-4">資料載入中...</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-
-  <div id="tab-dashboard" class="tab-content d-none">
-    <div class="row g-3 mb-4">
-      <div class="col-md-3">
-        <div class="card p-3 stat-card">
-          <div class="text-muted small">總檢驗批數</div>
-          <div class="h2 fw-bold m-0" id="stat-total">0</div>
-        </div>
-      </div>
-      <div class="col-md-3">
-        <div class="card p-3 stat-card pass">
-          <div class="text-muted small">批次合格率</div>
-          <div class="h2 fw-bold text-success m-0" id="stat-pass-rate">0%</div>
-        </div>
-      </div>
-      <div class="col-md-3">
-        <div class="card p-3 stat-card fail">
-          <div class="text-muted small">數量不良率</div>
-          <div class="h2 fw-bold text-danger m-0" id="stat-defect-rate">0%</div>
-        </div>
-      </div>
-      <div class="col-md-3">
-        <div class="card p-3 stat-card fail">
-          <div class="text-muted small">不合格批數</div>
-          <div class="h2 fw-bold text-danger m-0" id="stat-fail-count">0</div>
-        </div>
-      </div>
-    </div>
+# ==========================================
+# 頁面 2：新增進料檢驗
+# ==========================================
+with tab2:
+    st.subheader("新增進料檢驗單")
     
-    <div class="card p-4">
-      <h5 class="card-title text-danger mb-3 fw-bold">近期不合格警示清單 (Recent Failure Logs)</h5>
-      <ul class="list-group list-group-flush" id="recent-fails-list">
-        <li class="list-group-item text-muted py-3">載入中...</li>
-      </ul>
-    </div>
-  </div>
-</div>
-
-<script>
-  const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzeQ7G0xJ-c9D0ExQ_dmo4OqugJ9XauRKy8M6s2-Dti_ZCvzq9XhXzG2sweI3gJdybAmw/exec";
-
-  let itemMasterCache = [];
-  let historyLogsCache = [];
-
-  document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("insp-date").valueAsDate = new Date();
-    loadItemMaster();
-  });
-
-  function switchTab(tabId, btnElement) {
-    document.querySelectorAll(".tab-content").forEach(el => el.classList.add("d-none"));
-    document.querySelectorAll("#mainTab .nav-link").forEach(el => el.classList.remove("active"));
+    # 載入料件主檔供選單使用
+    items = get_api_data("getItemMaster")
+    item_dict = {item["partNo"]: item["partName"] for item in items} if items else {}
     
-    document.getElementById(tabId).classList.remove("d-none");
-    btnElement.classList.add("active");
+    with st.form("form_inspection", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            part_options = [""] + list(item_dict.keys())
+            selected_part_no = st.selectbox(
+                "選擇料號 *", 
+                options=part_options, 
+                format_func=lambda x: f"{x} ({item_dict[x]})" if x in item_dict else "請選擇料號"
+            )
+            part_name_display = item_dict.get(selected_part_no, "")
+            st.text_input("自動填入品名", value=part_name_display, disabled=True)
+            
+            inspect_date = st.date_input("檢驗日期 *", value=date.today())
+            inspector = st.text_input("檢驗人員 *", placeholder="請輸入姓名/工號")
+            
+        with col2:
+            batch_size = st.number_input("進貨數量 *", min_value=1, value=100, step=1)
+            sample_size = st.number_input("抽驗數量 *", min_value=1, value=10, step=1)
+            defect_count = st.number_input("不良數量 *", min_value=0, value=0, step=1)
+            
+            # 自動判定預設值
+            default_status = "不合格" if defect_count > 0 else "合格"
+            status = st.selectbox("判定結果 *", ["合格", "不合格"], index=0 if default_status == "合格" else 1)
+        
+        remark = st.text_area("備註 / 異常描述", placeholder="備註或不良現象描述...")
+        
+        submitted_insp = st.form_submit_button("儲存檢驗紀錄", use_container_width=True)
+        if submitted_insp:
+            if not selected_part_no or not inspector:
+                st.warning("請完整填寫必要欄位！")
+            else:
+                with st.spinner("檢驗單存檔中..."):
+                    res = post_api_data("addInspection", {
+                        "partNo": selected_part_no,
+                        "partName": part_name_display,
+                        "inspectDate": str(inspect_date),
+                        "inspector": inspector.strip(),
+                        "batchSize": batch_size,
+                        "sampleSize": sample_size,
+                        "defectCount": defect_count,
+                        "status": status,
+                        "remark": remark.strip()
+                    })
+                    if res.get("status") == "success":
+                        st.success(f"{res.get('message')} (單號：{res.get('inspectionId')})")
+                    else:
+                        st.error(f"存檔失敗: {res.get('message')}")
 
-    if (tabId === 'tab-add-inspection') loadItemMaster();
-    if (tabId === 'tab-history') loadHistory();
-    if (tabId === 'tab-dashboard') loadDashboard();
-  }
-
-  async function submitItemMaster() {
-    const btn = document.getElementById("btn-master-submit");
-    const data = {
-      partNo: document.getElementById("master-partNo").value.trim(),
-      partName: document.getElementById("master-partName").value.trim(),
-      spec: document.getElementById("master-spec").value.trim(),
-      supplier: document.getElementById("master-supplier").value.trim(),
-      aql: document.getElementById("master-aql").value
-    };
-
-    if (!data.partNo || !data.partName) return alert("請填寫料號與品名！");
-
-    btn.disabled = true;
-    btn.innerHTML = '<span class="loading-spinner"></span> 儲存中...';
-
-    try {
-      const res = await fetch(GAS_API_URL, {
-        method: "POST",
-        body: JSON.stringify({ action: "addItemMaster", data })
-      }).then(r => r.json());
-
-      if (res.status === "success") {
-        alert(res.message);
-        document.getElementById("form-item-master").reset();
-      } else {
-        alert("失敗: " + res.message);
-      }
-    } catch (err) {
-      alert("傳送失敗：" + err);
-    } finally {
-      btn.disabled = false;
-      btn.innerText = "儲存料件主檔";
-    }
-  }
-
-  async function loadItemMaster() {
-    try {
-      const res = await fetch(`${GAS_API_URL}?action=getItemMaster`).then(r => r.json());
-      if (res.status === "success") {
-        itemMasterCache = res.data;
-        const select = document.getElementById("insp-partNo");
-        select.innerHTML = '<option value="">-- 請選擇料號 --</option>';
-        itemMasterCache.forEach(item => {
-          select.innerHTML += `<option value="${item.partNo}">${item.partNo} (${item.partName})</option>`;
-        });
-      }
-    } catch (err) {
-      console.error("載入料件選單失敗:", err);
-    }
-  }
-
-  function autoFillPartName() {
-    const selectedPartNo = document.getElementById("insp-partNo").value;
-    const item = itemMasterCache.find(i => i.partNo === selectedPartNo);
-    document.getElementById("insp-partName").value = item ? item.partName : "";
-  }
-
-  function autoDetermineStatus() {
-    const defect = Number(document.getElementById("insp-defectCount").value);
-    document.getElementById("insp-status").value = defect > 0 ? "不合格" : "合格";
-  }
-
-  async function submitInspection() {
-    const btn = document.getElementById("btn-insp-submit");
-    const data = {
-      partNo: document.getElementById("insp-partNo").value,
-      partName: document.getElementById("insp-partName").value,
-      inspectDate: document.getElementById("insp-date").value,
-      inspector: document.getElementById("insp-inspector").value.trim(),
-      batchSize: document.getElementById("insp-batchSize").value,
-      sampleSize: document.getElementById("insp-sampleSize").value,
-      defectCount: document.getElementById("insp-defectCount").value,
-      status: document.getElementById("insp-status").value,
-      remark: document.getElementById("insp-remark").value.trim()
-    };
-
-    if (!data.partNo || !data.inspector || !data.batchSize || !data.sampleSize) {
-      return alert("請完整填寫必要欄位！");
-    }
-
-    btn.disabled = true;
-    btn.innerHTML = '<span class="loading-spinner"></span> 存檔中...';
-
-    try {
-      const res = await fetch(GAS_API_URL, {
-        method: "POST",
-        body: JSON.stringify({ action: "addInspection", data })
-      }).then(r => r.json());
-
-      if (res.status === "success") {
-        alert(`${res.message}\\n單號：${res.inspectionId}`);
-        document.getElementById("form-add-inspection").reset();
-        document.getElementById("insp-date").valueAsDate = new Date();
-      } else {
-        alert("失敗: " + res.message);
-      }
-    } catch (err) {
-      alert("存檔失敗：" + err);
-    } finally {
-      btn.disabled = false;
-      btn.innerText = "儲存檢驗紀錄";
-    }
-  }
-
-  async function loadHistory() {
-    const tbody = document.getElementById("history-table-body");
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4"><span class="loading-spinner"></span> 資料載入中...</td></tr>';
+# ==========================================
+# 頁面 3：歷史紀錄查詢
+# ==========================================
+with tab3:
+    st.subheader("歷史檢驗紀錄查詢")
+    search_kw = st.text_input("關鍵字搜尋（單號 / 料號 / 品名）", "")
     
-    try {
-      const res = await fetch(`${GAS_API_URL}?action=getHistory`).then(r => r.json());
-      if (res.status === "success") {
-        historyLogsCache = res.data;
-        renderHistoryTable();
-      }
-    } catch (err) {
-      tbody.innerHTML = '<tr><td colspan="9" class="text-center text-danger">讀取失敗</td></tr>';
-    }
-  }
-
-  function renderHistoryTable() {
-    const kw = document.getElementById("search-keyword").value.toLowerCase();
-    const tbody = document.getElementById("history-table-body");
-    const filtered = historyLogsCache.filter(i => 
-      i.partNo.toLowerCase().includes(kw) || 
-      i.partName.toLowerCase().includes(kw) ||
-      i.inspectionId.toLowerCase().includes(kw)
-    );
-
-    if (filtered.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-muted">無符合條件的檢驗紀錄</td></tr>';
-      return;
-    }
-
-    tbody.innerHTML = filtered.map(i => `
-      <tr>
-        <td class="fw-bold">${i.inspectionId}</td>
-        <td>${i.inspectDate}</td>
-        <td>${i.partNo}</td>
-        <td>${i.partName}</td>
-        <td>${i.batchSize}</td>
-        <td>${i.sampleSize}</td>
-        <td class="${i.defectCount > 0 ? 'text-danger fw-bold' : ''}">${i.defectCount}</td>
-        <td><span class="badge ${i.status === '合格' ? 'bg-success' : 'bg-danger'}">${i.status}</span></td>
-        <td>${i.inspector}</td>
-      </tr>
-    `).join("");
-  }
-
-  async function loadDashboard() {
-    try {
-      const res = await fetch(`${GAS_API_URL}?action=getDashboardStats`).then(r => r.json());
-      if (res.status === "success") {
-        const d = res.data;
-        document.getElementById("stat-total").innerText = d.totalBatches;
-        document.getElementById("stat-pass-rate").innerText = d.passRate + "%";
-        document.getElementById("stat-defect-rate").innerText = d.defectRate + "%";
-        document.getElementById("stat-fail-count").innerText = d.failCount;
-
-        const failList = document.getElementById("recent-fails-list");
-        if (d.recentFails.length === 0) {
-          failList.innerHTML = '<li class="list-group-item text-muted py-3">無不合格批次紀錄</li>';
-        } else {
-          failList.innerHTML = d.recentFails.map(f => `
-            <li class="list-group-item d-flex justify-content-between align-items-center">
-              <div>
-                <strong>${f.inspectDate} - ${f.partNo} (${f.partName})</strong>
-                <div class="text-muted small">檢驗員: ${f.inspector} | 抽驗數: ${f.sampleSize} | 不良數: <span class="text-danger fw-bold">${f.defectCount}</span> | 備註: ${f.remark || '無'}</div>
-              </div>
-              <span class="badge bg-danger">${f.inspectionId}</span>
-            </li>
-          `).join("");
+    history_data = get_api_data("getHistory")
+    if history_data:
+        df = pd.DataFrame(history_data)
+        col_map = {
+            "inspectionId": "檢驗單號",
+            "inspectDate": "檢驗日期",
+            "partNo": "料號",
+            "partName": "品名",
+            "batchSize": "進貨數量",
+            "sampleSize": "抽驗數量",
+            "defectCount": "不良數量",
+            "status": "判定結果",
+            "inspector": "檢驗人員",
+            "remark": "備註"
         }
-      }
-    } catch (err) {
-      console.error("看板讀取失敗:", err);
-    }
-  }
-</script>
-</body>
-</html>
-"""
+        df = df.rename(columns=col_map)
+        
+        if search_kw:
+            kw = search_kw.lower()
+            mask = df["料號"].astype(str).str.lower().str.contains(kw) | \
+                   df["品名"].astype(str).str.lower().str.contains(kw) | \
+                   df["檢驗單號"].astype(str).str.lower().str.contains(kw)
+            df = df[mask]
+            
+        st.dataframe(df, use_container_width=True, hide_index=True)
+    else:
+        st.info("目前尚無歷史檢驗紀錄或載入中。")
 
-# 在 Streamlit 中渲染 HTML 網頁元件
-components.html(html_code, height=900, scrolling=True)
+# ==========================================
+# 頁面 4：品質分析看板
+# ==========================================
+with tab4:
+    st.subheader("品質分析看板")
+    stats = get_api_data("getDashboardStats")
+    if stats:
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("總檢驗批數", stats.get("totalBatches", 0))
+        m2.metric("批次合格率", f"{stats.get('passRate', 0)}%")
+        m3.metric("數量不良率", f"{stats.get('defectRate', 0)}%")
+        m4.metric("不合格批數", stats.get("failCount", 0))
+        
+        st.markdown("---")
+        st.subheader("近期不合格警示清單 (Recent Failures)")
+        recent_fails = stats.get("recentFails", [])
+        if recent_fails:
+            fail_df = pd.DataFrame(recent_fails).rename(columns={
+                "inspectionId": "單號",
+                "inspectDate": "日期",
+                "partNo": "料號",
+                "partName": "品名",
+                "sampleSize": "抽驗數",
+                "defectCount": "不良數",
+                "inspector": "檢驗員",
+                "remark": "備註"
+            })
+            st.dataframe(fail_df, use_container_width=True, hide_index=True)
+        else:
+            st.success("目前無不合格批次紀錄。")
