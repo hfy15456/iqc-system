@@ -8,7 +8,7 @@ GAS_API_URL = "https://script.google.com/macros/s/AKfycbzeQ7G0xJ-c9D0ExQ_dmo4Oqu
 st.set_page_config(page_title="IQC 進料品質管理系統", layout="wide")
 
 st.title("IQC 進料品質管理系統")
-st.caption("連動雲端試算表 InspectionLogs 實體欄位")
+st.caption("連動雲端試算表：ItemMaster (主檔) 與 InspectionLogs (檢驗紀錄)")
 
 def get_api_data(action):
     try:
@@ -70,57 +70,72 @@ with tab1:
                         st.error("❌ " + res.get("message"))
 
 # ==========================================
-# 頁面 2：新增進料檢驗 (InspectionLogs)
+# 頁面 2：新增進料檢驗 (按 ItemMaster 細項分開輸入)
 # ==========================================
 with tab2:
-    st.subheader("新增進料檢驗單 (InspectionLogs)")
+    st.subheader("新增進料檢驗單 (資料細項獨立輸入)")
     
+    # 讀取 ItemMaster 的料件詳細列表
     master_items = get_api_data("getItemMaster")
-    master_dict = {item["partNo"]: f"{item['partName']} {item['spec']}".strip() for item in master_items} if master_items else {}
+    master_map = {item["partNo"]: item for item in master_items} if master_items else {}
     
+    use_custom = st.checkbox("手動輸入全新料號 (非 ItemMaster 既有料號)")
+    
+    selected_part_no = ""
+    auto_part_name = ""
+    auto_spec = ""
+    auto_supplier = ""
+    
+    if not use_custom and master_map:
+        selected_part_no = st.selectbox(
+            "從 ItemMaster 快速選擇料號 *", 
+            options=[""] + list(master_map.keys()),
+            format_func=lambda x: f"{x} - {master_map[x]['partName']}" if x in master_map else "-- 請選擇料號 --"
+        )
+        if selected_part_no in master_map:
+            item_info = master_map[selected_part_no]
+            auto_part_name = item_info.get("partName", "")
+            auto_spec = item_info.get("spec", "")
+            auto_supplier = item_info.get("supplier", "")
+
     with st.form("form_add_inspection", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
+        st.markdown("##### 📌 一、料件基本資訊 (對應 ItemMaster)")
+        col_a1, col_a2 = st.columns(2)
+        with col_a1:
+            part_no_input = st.text_input("1. 料號 *", value=selected_part_no if not use_custom else "", placeholder="例：2305212")
+            part_name_input = st.text_input("2. 品名 *", value=auto_part_name if not use_custom else "", placeholder="例：RFDS Control PCB")
+        with col_a2:
+            spec_input = st.text_input("3. 規格", value=auto_spec if not use_custom else "", placeholder="例：Rev B / PCB")
+            supplier_input = st.text_input("4. 供應商", value=auto_supplier if not use_custom else "", placeholder="例：全葳 / 辰樺")
+            
+        st.markdown("---")
+        st.markdown("##### 📌 二、進料檢驗數據紀錄")
+        col_b1, col_b2 = st.columns(2)
+        with col_b1:
             inspect_date = st.date_input("檢驗日期 *", value=date.today())
-            
-            use_custom = st.checkbox("手動輸入全新料號 (不在 ItemMaster 中)")
-            if not use_custom and master_dict:
-                selected_part_no = st.selectbox(
-                    "選擇料號 (從 ItemMaster) *", 
-                    options=list(master_dict.keys()),
-                    format_func=lambda x: f"{x} - {master_dict[x]}"
-                )
-                part_no = selected_part_no
-                part_name_spec = master_dict.get(selected_part_no, "")
-                st.text_input("品名規格 (自動帶入)", value=part_name_spec, disabled=True)
-            else:
-                part_no = st.text_input("料號 *", placeholder="例：2305212")
-                part_name_spec = st.text_input("品名規格 *", placeholder="例：RFDS Control PCB")
-                
-            supplier = st.text_input("供應商", placeholder="例：全葳 / 辰樺")
             item_attr = st.selectbox("料件屬性", ["PCB", "料件維修", "二手來料", "一般料件"], index=0)
-
-        with col2:
-            total_qty = st.number_input("進貨數量 *", min_value=1, value=10, step=1)
+            total_qty = st.number_input("進貨數量 (數量) *", min_value=1, value=10, step=1)
             sample_qty = st.number_input("檢驗數量 *", min_value=1, value=10, step=1)
+            
+        with col_b2:
             defect_qty = st.number_input("異常數量 *", min_value=0, value=0, step=1)
-            
             result = st.selectbox("Pass/Fail 判定 *", ["Pass", "Fail"], index=0)
-            detail_link = st.text_input("詳細紀錄連結/頁面", value="👉 前往PCB表")
-            
-        defect_reason = st.text_area("不良原因描述", placeholder="若有異常請描述不良現象...")
+            detail_link = st.selectbox("填寫詳細紀錄 (選單/連結)", ["👉 前往PCB表", "👉 前往維修表", "👉 前往二手表", "👉 前往一般表"], index=0)
 
-        submitted_insp = st.form_submit_button("寫入 InspectionLogs", use_container_width=True)
+        defect_reason = st.text_area("不良原因描述", placeholder="若有異常請詳細描述不良現象...")
+
+        submitted_insp = st.form_submit_button("寫入 InspectionLogs 試算表", use_container_width=True)
         if submitted_insp:
-            if not part_no or not part_name_spec:
-                st.warning("請完整填寫料號與品名規格！")
+            if not part_no_input or not part_name_input:
+                st.warning("請完整填寫料號與品名！")
             else:
                 with st.spinner("資料寫入中..."):
                     res = post_api_data("addInspection", {
                         "inspectDate": str(inspect_date),
-                        "partNameSpec": part_name_spec.strip(),
-                        "partNo": part_no.strip(),
-                        "supplier": supplier.strip(),
+                        "partNo": part_no_input.strip(),
+                        "partName": part_name_input.strip(),
+                        "spec": spec_input.strip(),
+                        "supplier": supplier_input.strip(),
                         "itemAttr": item_attr,
                         "detailLink": detail_link.strip(),
                         "totalQty": total_qty,
@@ -145,7 +160,6 @@ with tab3:
     if history_data:
         df = pd.DataFrame(history_data)
         
-        # 100% 精準對齊您的試算表標頭順序
         col_map = {
             "inspectDate": "檢驗日期",
             "partNameSpec": "品名規格",
@@ -162,7 +176,6 @@ with tab3:
         }
         df = df.rename(columns=col_map)
         
-        # 依試算表標準欄位順序排列顯示
         ordered_cols = ["檢驗日期", "品名規格", "料號", "供應商", "料件屬性", "填寫詳細紀錄", "數量", "檢驗數量", "異常數量", "Pass/Fail", "良率", "不良原因描述"]
         df = df[[c for c in ordered_cols if c in df.columns]]
         
