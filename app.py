@@ -1,3 +1,11 @@
+import streamlit as st
+import streamlit.components.v1 as components
+
+# 設定頁面寬度
+st.set_page_config(page_title="IQC 進料品質管理系統", layout="wide")
+
+# 將 HTML 網頁程式碼用三引號包起來
+html_code = """
 <!DOCTYPE html>
 <html lang="zh-TW">
 <head>
@@ -21,10 +29,9 @@
 <div class="container py-4">
   <div class="text-center mb-4">
     <h2 class="fw-bold text-primary">IQC 進料品質管理系統</h2>
-    <p class="text-muted small">Google Sheets 後端連動 × GitHub Pages 即時監控</p>
+    <p class="text-muted small">Google Sheets 後端連動 × 即時監控</p>
   </div>
 
-  <!-- 主功能導覽列 -->
   <ul class="nav nav-pills justify-content-center mb-4" id="mainTab" role="tablist">
     <li class="nav-item"><button class="nav-link active" onclick="switchTab('tab-item-master', this)">1. 新增料件主檔</button></li>
     <li class="nav-item"><button class="nav-link" onclick="switchTab('tab-add-inspection', this)">2. 新增進料檢驗</button></li>
@@ -32,7 +39,6 @@
     <li class="nav-item"><button class="nav-link" onclick="switchTab('tab-dashboard', this)">4. 品質分析看板</button></li>
   </ul>
 
-  <!-- 1. 新增料件主檔 -->
   <div id="tab-item-master" class="tab-content">
     <div class="card p-4 mx-auto" style="max-width: 600px;">
       <h4 class="card-title mb-3 fw-bold">新增料件主檔</h4>
@@ -66,7 +72,6 @@
     </div>
   </div>
 
-  <!-- 2. 新增進料檢驗 -->
   <div id="tab-add-inspection" class="tab-content d-none">
     <div class="card p-4 mx-auto" style="max-width: 650px;">
       <h4 class="card-title mb-3 fw-bold">新增進料檢驗單</h4>
@@ -123,7 +128,6 @@
     </div>
   </div>
 
-  <!-- 3. 歷史紀錄查詢 -->
   <div id="tab-history" class="tab-content d-none">
     <div class="card p-4">
       <div class="d-flex justify-content-between align-items-center mb-3">
@@ -145,7 +149,6 @@
     </div>
   </div>
 
-  <!-- 4. 品質分析看板 -->
   <div id="tab-dashboard" class="tab-content d-none">
     <div class="row g-3 mb-4">
       <div class="col-md-3">
@@ -184,7 +187,6 @@
 </div>
 
 <script>
-  // 已帶入您部署好的 Apps Script Web App URL
   const GAS_API_URL = "https://script.google.com/macros/s/AKfycbzeQ7G0xJ-c9D0ExQ_dmo4OqugJ9XauRKy8M6s2-Dti_ZCvzq9XhXzG2sweI3gJdybAmw/exec";
 
   let itemMasterCache = [];
@@ -207,7 +209,6 @@
     if (tabId === 'tab-dashboard') loadDashboard();
   }
 
-  // 1. 新增料件主檔
   async function submitItemMaster() {
     const btn = document.getElementById("btn-master-submit");
     const data = {
@@ -236,14 +237,13 @@
         alert("失敗: " + res.message);
       }
     } catch (err) {
-      alert("傳送失敗，請確認網路連線或 API 狀態：" + err);
+      alert("傳送失敗：" + err);
     } finally {
       btn.disabled = false;
       btn.innerText = "儲存料件主檔";
     }
   }
 
-  // 載入料件選單
   async function loadItemMaster() {
     try {
       const res = await fetch(`${GAS_API_URL}?action=getItemMaster`).then(r => r.json());
@@ -271,7 +271,6 @@
     document.getElementById("insp-status").value = defect > 0 ? "不合格" : "合格";
   }
 
-  // 2. 新增進料檢驗
   async function submitInspection() {
     const btn = document.getElementById("btn-insp-submit");
     const data = {
@@ -300,7 +299,7 @@
       }).then(r => r.json());
 
       if (res.status === "success") {
-        alert(`${res.message}\n單號：${res.inspectionId}`);
+        alert(`${res.message}\\n單號：${res.inspectionId}`);
         document.getElementById("form-add-inspection").reset();
         document.getElementById("insp-date").valueAsDate = new Date();
       } else {
@@ -314,7 +313,6 @@
     }
   }
 
-  // 3. 讀取與查詢歷史紀錄
   async function loadHistory() {
     const tbody = document.getElementById("history-table-body");
     tbody.innerHTML = '<tr><td colspan="9" class="text-center py-4"><span class="loading-spinner"></span> 資料載入中...</td></tr>';
@@ -359,7 +357,6 @@
     `).join("");
   }
 
-  // 4. 品質分析看板
   async function loadDashboard() {
     try {
       const res = await fetch(`${GAS_API_URL}?action=getDashboardStats`).then(r => r.json());
@@ -378,7 +375,7 @@
             <li class="list-group-item d-flex justify-content-between align-items-center">
               <div>
                 <strong>${f.inspectDate} - ${f.partNo} (${f.partName})</strong>
-                <div class="text-muted small">檢驗員: ${f.inspector} | 抽樣數: ${f.sampleSize} | 不良數: <span class="text-danger fw-bold">${f.defectCount}</span> | 備註: ${f.remark || '無'}</div>
+                <div class="text-muted small">檢驗員: ${f.inspector} | 抽驗數: ${f.sampleSize} | 不良數: <span class="text-danger fw-bold">${f.defectCount}</span> | 備註: ${f.remark || '無'}</div>
               </div>
               <span class="badge bg-danger">${f.inspectionId}</span>
             </li>
@@ -390,6 +387,9 @@
     }
   }
 </script>
-
 </body>
 </html>
+"""
+
+# 在 Streamlit 中渲染 HTML 網頁元件
+components.html(html_code, height=900, scrolling=True)
