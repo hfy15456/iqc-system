@@ -9,7 +9,7 @@ GAS_API_URL = "https://script.google.com/macros/s/AKfycbzeQ7G0xJ-c9D0ExQ_dmo4Oqu
 st.set_page_config(page_title="IQC 進料品質管理系統", layout="wide")
 
 st.title("IQC 進料品質管理系統")
-st.caption("連動雲端 IQC 試算表現有欄位與歷史資料")
+st.caption("連動雲端試算表：ItemMaster (主檔) 與 InspectionLogs (檢驗紀錄)")
 
 def get_api_data(action):
     try:
@@ -35,31 +35,65 @@ def post_api_data(action, payload):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-tab1, tab2, tab3 = st.tabs(["1. 新增進料檢驗單", "2. 歷史紀錄查詢", "3. 品質分析看板"])
+tab1, tab2, tab3, tab4 = st.tabs(["1. 新增料件主檔", "2. 新增進料檢驗", "3. 歷史紀錄查詢", "4. 品質分析看板"])
 
 # ==========================================
-# 頁面 1：新增進料檢驗單
+# 頁面 1：新增料件主檔 (寫入 ItemMaster)
 # ==========================================
 with tab1:
-    st.subheader("新增進料檢驗單")
+    st.subheader("新增料件主檔 (寫入 ItemMaster 頁籤)")
+    with st.form("form_item_master", clear_on_submit=True):
+        col1, col2 = st.columns(2)
+        with col1:
+            part_no = st.text_input("料號 *", placeholder="例：1335005-03-S")
+            part_name = st.text_input("品名 *", placeholder="例：APEX Passive")
+            spec = st.text_input("規格描述", placeholder="例：Passive Component / RoHS")
+        with col2:
+            supplier = st.text_input("供應商", placeholder="例：台積電 / 鴻海")
+            aql = st.selectbox("AQL 允收水準", ["0.65", "0.4", "1.0"], index=0)
+            
+        submitted_master = st.form_submit_button("儲存至 ItemMaster", use_container_width=True)
+        if submitted_master:
+            if not part_no or not part_name:
+                st.warning("請填寫料號與品名！")
+            else:
+                with st.spinner("存檔中..."):
+                    res = post_api_data("addItemMaster", {
+                        "partNo": part_no.strip(),
+                        "partName": part_name.strip(),
+                        "spec": spec.strip(),
+                        "supplier": supplier.strip(),
+                        "aql": aql
+                    })
+                    if res.get("status") == "success":
+                        st.success("✅ " + res.get("message"))
+                    else:
+                        st.error("❌ " + res.get("message"))
+
+# ==========================================
+# 頁面 2：新增進料檢驗 (寫入 InspectionLogs)
+# ==========================================
+with tab2:
+    st.subheader("新增進料檢驗單 (寫入 InspectionLogs 頁籤)")
     
-    existing_items = get_api_data("getItemMaster")
-    item_dict = {item["partNo"]: item["partNameSpec"] for item in existing_items} if existing_items else {}
+    # 讀取 ItemMaster 的料件
+    master_items = get_api_data("getItemMaster")
+    master_dict = {item["partNo"]: f"{item['partName']} {item['spec']}".strip() for item in master_items} if master_items else {}
     
     with st.form("form_add_inspection", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
             inspect_date = st.date_input("檢驗日期 *", value=date.today())
             
-            use_custom = st.checkbox("手動輸入全新料號 (不在既有試算表中)")
-            if not use_custom and item_dict:
+            use_custom = st.checkbox("手動輸入全新料號 (不在 ItemMaster 中)")
+            if not use_custom and master_dict:
                 selected_part_no = st.selectbox(
-                    "選擇既有料號 *", 
-                    options=list(item_dict.keys()),
-                    format_func=lambda x: f"{x} - {item_dict[x]}"
+                    "從 ItemMaster 選擇料號 *", 
+                    options=list(master_dict.keys()),
+                    format_func=lambda x: f"{x} - {master_dict[x]}"
                 )
                 part_no = selected_part_no
-                part_name_spec = item_dict.get(selected_part_no, "")
+                part_name_spec = master_dict.get(selected_part_no, "")
                 st.text_input("品名規格 (自動帶入)", value=part_name_spec, disabled=True)
             else:
                 part_no = st.text_input("料號 *", placeholder="例：1335005-03-S")
@@ -78,10 +112,10 @@ with tab1:
             
         defect_reason = st.text_area("不良原因描述 / 備註", placeholder="例：檢測有1PCS過規")
 
-        submitted = st.form_submit_button("寫入雲端 IQC 試算表", use_container_width=True)
-        if submitted:
+        submitted_insp = st.form_submit_button("寫入 InspectionLogs", use_container_width=True)
+        if submitted_insp:
             if not part_no or not part_name_spec or not inspector:
-                st.warning("請完整填寫料號、品名規格與檢驗人員！")
+                st.warning("請填寫料號、品名規格與檢驗人員！")
             else:
                 with st.spinner("資料寫入中..."):
                     res = post_api_data("addInspection", {
@@ -101,14 +135,14 @@ with tab1:
                     if res.get("status") == "success":
                         st.success("✅ " + res.get("message"))
                     else:
-                        st.error("❌ 寫入失敗：" + res.get("message"))
+                        st.error("❌ " + res.get("message"))
 
 # ==========================================
-# 頁面 2：歷史紀錄查詢
+# 頁面 3：歷史紀錄查詢 (讀取 InspectionLogs)
 # ==========================================
-with tab2:
-    st.subheader("歷史檢驗紀錄查詢 (同步試算表現有資料)")
-    search_kw = st.text_input("搜尋關鍵字 (料號 / 品名規格 / 檢驗人員 / 不良描述)", "")
+with tab3:
+    st.subheader("歷史檢驗紀錄查詢 (InspectionLogs)")
+    search_kw = st.text_input("關鍵字搜尋 (料號 / 品名規格 / 檢驗人員 / 不良描述)", "")
     
     history_data = get_api_data("getHistory")
     if history_data:
@@ -139,12 +173,12 @@ with tab2:
             
         st.dataframe(df, use_container_width=True, hide_index=True)
     else:
-        st.info("尚無紀錄或連線中...")
+        st.info("尚無 InspectionLogs 檢驗紀錄或載入中...")
 
 # ==========================================
-# 頁面 3：品質分析看板
+# 頁面 4：品質分析看板
 # ==========================================
-with tab3:
+with tab4:
     st.subheader("品質分析看板")
     stats = get_api_data("getDashboardStats")
     if stats:
