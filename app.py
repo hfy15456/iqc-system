@@ -3,7 +3,7 @@ import requests
 import pandas as pd
 from datetime import date
 
-# 請填入您的 Apps Script Web App API 網址
+# 您的 Apps Script API 網址
 GAS_API_URL = "https://script.google.com/macros/s/AKfycbzeQ7G0xJ-c9D0ExQ_dmo4OqugJ9XauRKy8M6s2-Dti_ZCvzq9XhXzG2sweI3gJdybAmw/exec"
 
 st.set_page_config(page_title="IQC 進料品質管理系統", layout="wide")
@@ -11,9 +11,10 @@ st.set_page_config(page_title="IQC 進料品質管理系統", layout="wide")
 st.title("IQC 進料品質管理系統")
 st.caption("連動雲端試算表：ItemMaster (主檔) 與 InspectionLogs (檢驗紀錄)")
 
+# 將 timeout 延長至 30 秒，防止 Google 冷啟動導致逾時
 def get_api_data(action):
     try:
-        res = requests.get(f"{GAS_API_URL}?action={action}", timeout=10)
+        res = requests.get(f"{GAS_API_URL}?action={action}", timeout=30)
         if res.status_code == 200:
             data = res.json()
             if data.get("status") == "success":
@@ -21,17 +22,17 @@ def get_api_data(action):
             else:
                 st.error(f"後端錯誤: {data.get('message')}")
         else:
-            st.error(f"HTTP 請求失敗: {res.status_code}")
+            st.error(f"HTTP 請求失敗 (狀態碼: {res.status_code})")
     except Exception as e:
         st.error(f"API 連線異常: {e}")
     return []
 
 def post_api_data(action, payload):
     try:
-        res = requests.post(GAS_API_URL, json={"action": action, "data": payload}, timeout=10)
+        res = requests.post(GAS_API_URL, json={"action": action, "data": payload}, timeout=30)
         if res.status_code == 200:
             return res.json()
-        return {"status": "error", "message": f"HTTP {res.status_code}"}
+        return {"status": "error", "message": f"HTTP 狀態碼: {res.status_code}"}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -57,7 +58,7 @@ with tab1:
             if not part_no or not part_name:
                 st.warning("請填寫料號與品名！")
             else:
-                with st.spinner("存檔中..."):
+                with st.spinner("資料儲存中..."):
                     res = post_api_data("addItemMaster", {
                         "partNo": part_no.strip(),
                         "partName": part_name.strip(),
