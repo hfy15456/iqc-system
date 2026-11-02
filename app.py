@@ -9,7 +9,7 @@ import plotly.express as px
 EXCEL_FILE = "IQC.xlsx"
 
 # 你的 Apps Script Web App URL
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz-cLEOSo5ph4_SA9CN-o34ejiIemoLFEExyMb6xaeE61ukNgcekEhnyjrlKkZTaOfZ/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwshdi-N3_KQDhBNeQeQXSKWbXONVcrZBbW0pT4gK4DFdNJ68K51yimmz77xkflRKhD/exec"
 
 st.set_page_config(page_title="IQC 品保進料檢驗系統", page_icon="🛡️", layout="wide")
 
