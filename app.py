@@ -70,18 +70,18 @@ with tab1:
                         st.error("❌ " + res.get("message"))
 
 # ==========================================
-# 頁面 2：新增進料檢驗 (按「料號」精準搜尋 + 自動帶入完整細項)
+# 頁面 2：新增進料檢驗 (精準依「料號」搜尋 + 自動帶入完整資料)
 # ==========================================
 with tab2:
     st.subheader("新增進料檢驗單")
     
-    # 同時向 ItemMaster 與 InspectionLogs 收集所有不重複料號
+    # 向 ItemMaster 與 InspectionLogs 收集不重複料號與細項資訊
     master_items = get_api_data("getItemMaster")
     history_items = get_api_data("getHistory")
     
     parts_db = {}
     
-    # 1. 載入 ItemMaster 資料
+    # 1. 載入 ItemMaster 主檔資訊
     for item in master_items:
         p_no = item.get("partNo", "").strip()
         if p_no:
@@ -92,7 +92,7 @@ with tab2:
                 "supplier": item.get("supplier", "")
             }
             
-    # 2. 補入 InspectionLogs (C欄為料號) 中的歷史紀錄
+    # 2. 補充 InspectionLogs 中既有紀錄的料號資訊 (C欄為料號)
     for item in history_items:
         p_no = item.get("partNo", "").strip()
         if p_no and p_no not in parts_db:
@@ -103,11 +103,10 @@ with tab2:
                 "supplier": item.get("supplier", "")
             }
 
-    st.markdown("##### 🔍 1. 搜尋料號 (例如輸入 87051 會精準出現 8705161-03-S)")
-    
+    st.markdown("##### 🔍 1. 搜尋料號 (打 87051 會精準呈現 8705161-03-S)")
     search_list = [""] + sorted(list(parts_db.keys()))
     
-    # selectbox 原生支援輸入關鍵字過濾 Key (料號)
+    # 輸入關鍵字過濾料號
     selected_part_no = st.selectbox(
         "點擊輸入關鍵字搜尋料號：",
         options=search_list,
@@ -115,7 +114,7 @@ with tab2:
         format_func=lambda x: f"{x} ({parts_db[x]['partName']})" if x in parts_db else "-- 請輸入或選擇料號 --"
     )
     
-    # 根據選取的「料號」自動擷取完整資訊
+    # 選定「料號」後自動擷取完整資訊帶入
     if selected_part_no in parts_db:
         info = parts_db[selected_part_no]
         init_part_no = info.get("partNo", "")
@@ -182,7 +181,7 @@ with tab2:
                         st.error("❌ " + res.get("message"))
 
 # ==========================================
-# 頁面 3：歷史紀錄查詢 (完全對齊 InspectionLogs 實體欄位)
+# 頁面 3：歷史紀錄查詢 (對齊 InspectionLogs 12 個實體欄位)
 # ==========================================
 with tab3:
     st.subheader("歷史檢驗紀錄查詢 (InspectionLogs)")
@@ -192,7 +191,6 @@ with tab3:
     if history_data:
         df = pd.DataFrame(history_data)
         
-        # 對齊InspectionLogs的12個欄位
         col_map = {
             "inspectDate": "檢驗日期",
             "partNameSpec": "品名規格",
