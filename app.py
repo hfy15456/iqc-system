@@ -2,15 +2,15 @@ import streamlit as st
 import pandas as pd
 import datetime
 import os
+import json
 import requests
 import plotly.express as px
 
 EXCEL_FILE = "IQC.xlsx"
 
-# Apps Script Web App URL
+# 你的 Apps Script Web App 專屬網址
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz-cLEOSo5ph4_SA9CN-o34ejiIemoLFEExyMb6xaeE61ukNgcekEhnyjrlKkZTaOfZ/exec"
 
-# 頁面基本配置
 st.set_page_config(page_title="IQC 品保進料檢驗系統", page_icon="🛡️", layout="wide")
 
 # 讀取 Excel 分頁的防錯函數
@@ -141,14 +141,20 @@ if menu == "📝 1. 新增進料檢驗":
         }
         
         try:
-            res = requests.post(APPS_SCRIPT_URL, json=payload, timeout=10)
-            if res.status_code == 200 and res.json().get("status") == "success":
-                st.success(f"已成功同步寫入 Google 試算表！料號：【{selected_part}】")
-                st.cache_data.clear()
-            else:
-                st.error(f"寫入失敗：{res.text}")
+            headers = {"Content-Type": "application/json"}
+            res = requests.post(APPS_SCRIPT_URL, data=json.dumps(payload), headers=headers, timeout=15)
+            
+            try:
+                res_json = res.json()
+                if res.status_code == 200 and res_json.get("status") == "success":
+                    st.success(f"已成功同步寫入 Google 試算表！料號：【{selected_part}】")
+                    st.cache_data.clear()
+                else:
+                    st.error(f"寫入失敗：{res_json.get('message', res.text)}")
+            except json.JSONDecodeError:
+                st.error("連線異常：Google 返回了非 JSON 格式頁面。請確認 Apps Script 部署設定中的「誰有存取權」是否已改為「所有人 (Anyone)」，且有發布「新版本」。")
         except Exception as e:
-            st.error(f"連線異常：{e}")
+            st.error(f"網路連線異常：{e}")
 
 # 2. 新增料件主檔
 elif menu == "➕ 2. 新增料件主檔":
@@ -168,14 +174,20 @@ elif menu == "➕ 2. 新增料件主檔":
                 "category": new_category
             }
             try:
-                res = requests.post(APPS_SCRIPT_URL, json=payload, timeout=10)
-                if res.status_code == 200 and res.json().get("status") == "success":
-                    st.success(f"料號【{new_part_no}】已成功新增至雲端主檔！")
-                    st.cache_data.clear()
-                else:
-                    st.error(f"新增失敗：{res.text}")
+                headers = {"Content-Type": "application/json"}
+                res = requests.post(APPS_SCRIPT_URL, data=json.dumps(payload), headers=headers, timeout=15)
+                
+                try:
+                    res_json = res.json()
+                    if res.status_code == 200 and res_json.get("status") == "success":
+                        st.success(f"料號【{new_part_no}】已成功新增至雲端主檔！")
+                        st.cache_data.clear()
+                    else:
+                        st.error(f"新增失敗：{res_json.get('message', res.text)}")
+                except json.JSONDecodeError:
+                    st.error("連線異常：Google 返回了非 JSON 格式頁面。請確認 Apps Script 部署設定中的「誰有存取權」是否已改為「所有人 (Anyone)」，且有發布「新版本」。")
             except Exception as e:
-                st.error(f"連線異常：{e}")
+                st.error(f"網路連線異常：{e}")
         else:
             st.warning("請填寫完整的料號與品名！")
 
