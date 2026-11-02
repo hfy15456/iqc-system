@@ -9,13 +9,30 @@ import plotly.express as px
 EXCEL_FILE = "IQC.xlsx"
 
 # 你的 Apps Script Web App URL
-APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwshdi-N3_KQDhBNeQeQXSKWbXONVcrZBbW0pT4gK4DFdNJ68K51yimmz77xkflRKhD/exec"
+APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyFJs9BWfyIU8YHLS6XSCmTtwg1ka4OHG1hXBPFXVy1LQ0SRgpsNckpiEWcebwLAouo/exec"
 
 st.set_page_config(page_title="IQC 品保進料檢驗系統", page_icon="🛡️", layout="wide")
 
-# 讀取 Excel 分頁的防錯函數
-@st.cache_data(ttl=2)
+# 優先從 Google 試算表實時讀取資料的防錯函數 (設定快取 3 秒)
+@st.cache_data(ttl=3)
 def load_sheet(sheet_name):
+    try:
+        payload = {"action": "get_data", "sheet_name": sheet_name}
+        res = requests.get(APPS_SCRIPT_URL, params={"data": json.dumps(payload)}, timeout=10)
+        res_json = res.json()
+        if res_json.get("status") == "success":
+            raw_data = res_json.get("data", [])
+            if len(raw_data) > 1:
+                headers = raw_data[0]
+                rows = raw_data[1:]
+                df = pd.DataFrame(rows, columns=headers)
+                return df
+            elif len(raw_data) == 1:
+                return pd.DataFrame(columns=raw_data[0])
+    except Exception:
+        pass
+
+    # 備援：若 API 無法連線時，讀取本地 IQC.xlsx
     if os.path.exists(EXCEL_FILE):
         try:
             xls = pd.ExcelFile(EXCEL_FILE)
@@ -25,8 +42,10 @@ def load_sheet(sheet_name):
             st.error(f"讀取 {sheet_name} 分頁失敗: {e}")
     return pd.DataFrame()
 
+# 標題欄
 st.title("🛡️ IQC 品保數位化進料檢驗系統")
 
+# 左側功能選單
 menu = st.sidebar.radio("系統功能選單", [
     "📝 1. 新增進料檢驗", 
     "➕ 2. 新增料件主檔",
@@ -34,6 +53,7 @@ menu = st.sidebar.radio("系統功能選單", [
     "📊 4. 品質分析看板"
 ])
 
+# 載入即時料件主檔
 df_items = load_sheet("料件主檔")
 
 # 1. 新增進料檢驗
@@ -138,15 +158,12 @@ if menu == "📝 1. 新增進料檢驗":
         
         try:
             res = requests.get(APPS_SCRIPT_URL, params={"data": json.dumps(payload)}, timeout=15)
-            try:
-                res_json = res.json()
-                if res.status_code == 200 and res_json.get("status") == "success":
-                    st.success(f"已成功同步寫入 Google 試算表！料號：【{selected_part}】")
-                    st.cache_data.clear()
-                else:
-                    st.error(f"寫入失敗：{res_json.get('message', res.text)}")
-            except json.JSONDecodeError:
-                st.error(f"⚠️ Google 回傳了非 JSON 頁面 (Status: {res.status_code})：\n```html\n{res.text[:300]}\n```")
+            res_json = res.json()
+            if res.status_code == 200 and res_json.get("status") == "success":
+                st.success(f"已成功同步寫入 Google 試算表！料號：【{selected_part}】")
+                st.cache_data.clear()
+            else:
+                st.error(f"寫入失敗：{res_json.get('message', res.text)}")
         except Exception as e:
             st.error(f"連線異常：{e}")
 
@@ -169,15 +186,12 @@ elif menu == "➕ 2. 新增料件主檔":
             }
             try:
                 res = requests.get(APPS_SCRIPT_URL, params={"data": json.dumps(payload)}, timeout=15)
-                try:
-                    res_json = res.json()
-                    if res.status_code == 200 and res_json.get("status") == "success":
-                        st.success(f"料號【{new_part_no}】已成功新增至雲端主檔！")
-                        st.cache_data.clear()
-                    else:
-                        st.error(f"新增失敗：{res_json.get('message', res.text)}")
-                except json.JSONDecodeError:
-                    st.error(f"⚠️ Google 回傳了非 JSON 頁面 (Status: {res.status_code})：\n```html\n{res.text[:300]}\n```")
+                res_json = res.json()
+                if res.status_code == 200 and res_json.get("status") == "success":
+                    st.success(f"料號【{new_part_no}】已成功新增至雲端主檔！")
+                    st.cache_data.clear()
+                else:
+                    st.error(f"新增失敗：{res_json.get('message', res.text)}")
             except Exception as e:
                 st.error(f"連線異常：{e}")
         else:
