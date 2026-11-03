@@ -73,7 +73,7 @@ with tab1:
                         st.error("❌ " + res.get("message"))
 
 # ==========================================
-# 頁面 2：新增進料檢驗
+# 頁面 2：新增進料檢驗 (即時顯示計算良率百分比)
 # ==========================================
 with tab2:
     st.subheader("新增進料檢驗單")
@@ -145,6 +145,13 @@ with tab2:
             defect_qty = st.number_input("異常數量 *", min_value=0, value=0, step=1)
             result = st.selectbox("Pass/Fail 判定 *", ["Pass", "Fail"], index=0)
 
+        # 即時計算動態百分比良率
+        calc_yield = ((total_qty - defect_qty) / total_qty * 100) if total_qty > 0 else 100.0
+        calc_yield = max(0.0, calc_yield)
+        yield_display = f"{calc_yield:.0f}%" if calc_yield.is_integer() else f"{calc_yield:.1f}%"
+        
+        st.info(f"📈 **預估計算良率：`{yield_display}`** (系統將自動寫入此百分比)")
+
         defect_reason = st.text_area("不良原因描述", placeholder="若有異常請詳細描述不良現象...")
 
         submitted_insp = st.form_submit_button("寫入 InspectionLogs 試算表", use_container_width=True)
@@ -152,7 +159,6 @@ with tab2:
             if not part_no_input or not part_name_input:
                 st.warning("請填寫料號與品名！")
             else:
-                # 轉為 yyyy.MM.dd 格式送出
                 date_str = inspect_date.strftime("%Y.%m.%d")
                 
                 with st.spinner("資料寫入中..."):
@@ -174,7 +180,7 @@ with tab2:
                         st.error("❌ " + res.get("message"))
 
 # ==========================================
-# 頁面 3：歷史紀錄查詢
+# 頁面 3：歷史紀錄查詢 (良率顯示為百分比 %)
 # ==========================================
 with tab3:
     st.subheader("歷史檢驗紀錄查詢 (InspectionLogs)")
