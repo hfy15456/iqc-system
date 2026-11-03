@@ -36,7 +36,6 @@ def post_api_data(action, payload):
 
 tab1, tab2, tab3, tab4 = st.tabs(["1. 新增料件主檔", "2. 新增進料檢驗", "3. 歷史紀錄查詢", "4. 品質分析看板"])
 
-# 預設常見供應商選單
 COMMON_SUPPLIERS = ["全葳", "辰樺", "Patrick", "滔寶", "手動輸入其他..."]
 
 # ==========================================
@@ -79,7 +78,6 @@ with tab1:
 with tab2:
     st.subheader("新增進料檢驗單")
     
-    # 彙整料件資料庫
     master_items = get_api_data("getItemMaster")
     history_items = get_api_data("getHistory")
     
@@ -154,9 +152,12 @@ with tab2:
             if not part_no_input or not part_name_input:
                 st.warning("請填寫料號與品名！")
             else:
+                # 轉為 yyyy.MM.dd 格式送出
+                date_str = inspect_date.strftime("%Y.%m.%d")
+                
                 with st.spinner("資料寫入中..."):
                     res = post_api_data("addInspection", {
-                        "inspectDate": str(inspect_date),
+                        "inspectDate": date_str,
                         "partNo": part_no_input.strip(),
                         "partName": part_name_input.strip(),
                         "supplier": supplier_input.strip(),
@@ -173,7 +174,7 @@ with tab2:
                         st.error("❌ " + res.get("message"))
 
 # ==========================================
-# 頁面 3：歷史紀錄查詢 (對齊 11 欄位)
+# 頁面 3：歷史紀錄查詢
 # ==========================================
 with tab3:
     st.subheader("歷史檢驗紀錄查詢 (InspectionLogs)")
